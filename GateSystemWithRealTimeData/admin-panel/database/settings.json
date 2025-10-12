@@ -1,0 +1,5 @@
+{
+  "costPerExit": 3000,
+  "defaultCredit": 100000,
+  "adminMode": false
+}

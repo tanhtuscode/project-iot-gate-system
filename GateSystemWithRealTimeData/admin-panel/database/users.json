@@ -1,0 +1,12 @@
+{
+  "users": [
+    {
+      "uid": "F3:6D:79:0C",
+      "name": "Trần Anh Tú",
+      "credit": 100000,
+      "type": "dynamic",
+      "in": false,
+      "createdAt": "2025-10-11T01:27:59.214Z"
+    }
+  ]
+}

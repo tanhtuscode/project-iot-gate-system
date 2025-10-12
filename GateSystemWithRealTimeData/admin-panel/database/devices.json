@@ -1,0 +1,31 @@
+{
+  "devices": [
+    {
+      "id": "device_1760145217447",
+      "name": "A",
+      "ip": "http://192.168.137.249",
+      "location": "A",
+      "description": "A",
+      "addedAt": "2025-10-11T01:13:37.447Z",
+      "lastConnected": "2025-10-11T01:50:50.333Z",
+      "connected": true,
+      "status": "connected",
+      "info": {
+        "fwVersion": "1.4.0",
+        "version": "1.4.0",
+        "ip": "192.168.137.249",
+        "ssid": "Hanu",
+        "rssi": -29,
+        "uptime": 2456,
+        "uptime_s": 2456,
+        "freeHeap": 205968,
+        "heap": 205952,
+        "users": 0,
+        "static": 0,
+        "dynamic": 0
+      },
+      "error": null
+    }
+  ],
+  "activeDeviceId": "device_1760145217447"
+}
