@@ -764,22 +764,22 @@ function startInputModePolling() {
         }
         
         try {
-            // Use the enhanced input endpoint
-            const response = await fetch('/api/esp32/input/last?clear=true');
+            // Check for pending new UIDs
+            const response = await fetch('/api/input/pending-uids');
             if (!response.ok) {
-                if (response.status === 400) {
-                    console.log('No active device selected for input mode');
-                    return;
-                }
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
             
             const data = await response.json();
             
-            // Check if there's a new card scan
-            if (data.hasInput && data.uid && data.isNew) {
-                console.log('New card detected in input mode:', data.uid);
-                handleNewCardScanned(data.uid);
+            // Process any pending UIDs
+            if (data.success && data.uids && data.uids.length > 0) {
+                // Get the most recent UID
+                const latestUID = data.uids[data.uids.length - 1];
+                console.log('New card detected in input mode:', latestUID.uid);
+                
+                // Handle the new card and clear it from pending list
+                handleNewCardScanned(latestUID.uid, latestUID.id);
             }
         } catch (error) {
             console.error('Error polling for card scans:', error);
@@ -807,7 +807,13 @@ function extractUIDFromEvent(message) {
     return uidMatch ? uidMatch[1] : null;
 }
 
-function handleNewCardScanned(uid) {
+function handleNewCardScanned(uid, uidId = null) {
+    // Clear the UID from pending list if ID provided
+    if (uidId) {
+        fetch(`/api/input/pending-uids/${uidId}`, { method: 'DELETE' })
+            .catch(error => console.error('Failed to clear pending UID:', error));
+    }
+    
     // Stop input mode
     inputModeActive = false;
     inputModeDeviceId = null;
@@ -817,7 +823,7 @@ function handleNewCardScanned(uid) {
     updateInputModeUI();
     
     // Show modal to add user with pre-filled UID
-    showAddDatabaseUserModal();
+    showAddDatabaseUserModal(uid);
     document.getElementById('newDbUserUID').value = uid;
     
     showNotification(`Card scanned! UID: ${uid}`, 'success');
@@ -1139,12 +1145,22 @@ function updateDatabaseUsersTable(users) {
 }
 
 // Modal functions for database user management
-function showAddDatabaseUserModal() {
+function showAddDatabaseUserModal(prefilledUID = '') {
     document.getElementById('addDatabaseUserModal').classList.remove('hidden');
-    document.getElementById('newDbUserUID').value = '';
+    document.getElementById('newDbUserUID').value = prefilledUID;
     document.getElementById('newDbUserName').value = '';
     document.getElementById('newDbUserCredit').value = '100000';
     document.getElementById('newDbUserType').value = 'dynamic';
+    
+    // If UID is pre-filled, focus on the name field
+    if (prefilledUID) {
+        setTimeout(() => {
+            document.getElementById('newDbUserName').focus();
+        }, 100);
+        
+        // Show a notification that the card was detected
+        showNotification(`New card detected! UID: ${prefilledUID}`, 'success');
+    }
 }
 
 function hideAddDatabaseUserModal() {

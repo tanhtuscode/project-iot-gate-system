@@ -166,8 +166,17 @@ app.post('/api/devices/add', async (req, res) => {
     return res.status(400).json({ error: 'Name and IP are required' });
   }
   
-  const deviceId = `device_${Date.now()}`;
   const baseUrl = ip.startsWith('http') ? ip : `http://${ip}`;
+  
+  // Check if device with this IP already exists
+  const existingDevice = Array.from(devices.values()).find(device => device.ip === baseUrl);
+  if (existingDevice) {
+    return res.status(400).json({ 
+      error: `Device with IP ${baseUrl} already exists (ID: ${existingDevice.id})` 
+    });
+  }
+  
+  const deviceId = `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   
   const device = {
     id: deviceId,
@@ -550,6 +559,73 @@ app.post('/api/esp32/input/mode', async (req, res) => {
     res.json(response.data);
   } catch (error) {
     console.error('Error toggling input mode:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Store for pending new UIDs (for input mode)
+let pendingNewUIDs = [];
+
+// Receive new UID from ESP32 (input mode)
+app.post('/api/input/new-uid', (req, res) => {
+  try {
+    const { uid, isNew, device_ip } = req.body;
+    
+    if (!uid) {
+      return res.status(400).json({ error: 'UID is required' });
+    }
+    
+    console.log(`New UID received from device ${device_ip}: ${uid} (isNew: ${isNew})`);
+    
+    // Store the new UID with timestamp
+    const newUID = {
+      uid: uid,
+      isNew: isNew,
+      timestamp: new Date().toISOString(),
+      device_ip: device_ip,
+      id: Date.now() // Simple ID for tracking
+    };
+    
+    pendingNewUIDs.push(newUID);
+    
+    // Keep only the last 10 UIDs to prevent memory issues
+    if (pendingNewUIDs.length > 10) {
+      pendingNewUIDs = pendingNewUIDs.slice(-10);
+    }
+    
+    res.json({ success: true, message: 'UID received' });
+  } catch (error) {
+    console.error('Error processing new UID:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get pending new UIDs (for admin panel polling)
+app.get('/api/input/pending-uids', (req, res) => {
+  try {
+    res.json({ 
+      success: true, 
+      uids: pendingNewUIDs,
+      count: pendingNewUIDs.length 
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Clear pending UIDs (after processing)
+app.delete('/api/input/pending-uids/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const initialLength = pendingNewUIDs.length;
+    pendingNewUIDs = pendingNewUIDs.filter(uid => uid.id != id);
+    
+    if (pendingNewUIDs.length === initialLength) {
+      return res.status(404).json({ error: 'UID not found' });
+    }
+    
+    res.json({ success: true, message: 'UID removed from pending list' });
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
