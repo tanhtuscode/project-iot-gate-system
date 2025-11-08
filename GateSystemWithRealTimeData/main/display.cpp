@@ -39,7 +39,7 @@ void updateDisplay() {
     // Update clock regularly
     if (millis() - lastClockUpdate > CLOCK_UPDATE_INTERVAL) {
         if (!displayBusy) {
-            showIdleScreen(); // Refresh idle screen with updated time
+            showIdleScreen(); 
         }
         lastClockUpdate = millis();
     }
@@ -48,6 +48,7 @@ void updateDisplay() {
     if (displayBusy && millis() >= displayUntilMs) {
         displayBusy = false;
         showIdleScreen();
+        ledIdleBlue(); // Reset LED to idle blue when returning to idle screen
     }
 }
 

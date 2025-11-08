@@ -56,10 +56,25 @@ void loop() {
         processCardScan(cardUID);
     }
     
-    // Periodic user sync (every 5 minutes)
+    // WiFi reconnection check (every 30 seconds)
+    static unsigned long lastWiFiCheck = 0;
+    if (millis() - lastWiFiCheck > 30000) { // 30 seconds
+        if (WiFi.status() != WL_CONNECTED) {
+            Serial.println("WiFi disconnected - attempting reconnection...");
+            connectWiFi();
+        }
+        lastWiFiCheck = millis();
+    }
+    
+    // Periodic user sync (every 5 minutes) - only if WiFi connected
     static unsigned long lastSync = 0;
     if (millis() - lastSync > 300000) { // 5 minutes
-        syncUsersWithServer();
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.println("Performing periodic sync with server...");
+            syncUsersWithServer();
+        } else {
+            Serial.println("Skipping sync - WiFi offline (will sync when connected)");
+        }
         lastSync = millis();
     }
     

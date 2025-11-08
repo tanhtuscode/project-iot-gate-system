@@ -8,6 +8,17 @@
       "in": false,
       "createdAt": "2025-10-11T01:27:59.214Z",
       "updatedAt": "2025-10-13T02:09:59.072Z"
+    },
+    {
+      "uid": "1E:FC:DA:1A",
+      "name": "Tus Anh",
+      "credit": 64000,
+      "type": "dynamic",
+      "in": false,
+      "createdAt": "2025-11-08T06:38:25.552Z",
+      "updatedAt": "2025-11-08T15:59:30.000Z",
+      "lastOutTime": "2025-11-08T15:59:30.000Z",
+      "lastInTime": "2025-11-08T15:44:39.000Z"
     }
   ]
 }

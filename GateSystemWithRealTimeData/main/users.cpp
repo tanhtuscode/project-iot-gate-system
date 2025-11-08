@@ -398,6 +398,12 @@ bool processCardScan(const String& uid) {
             Serial.println("Failed to notify server: " + response.error);
         }
         
+        // Automatically disable input mode after successful card scan
+        inputModeActive = false;
+        Serial.println("Input mode: INACTIVE (auto-disabled after scan)");
+        delay(2000); // Show the "card sent" message for 2 seconds
+        showIdleScreen();
+        
         return true;
     }
     
@@ -444,21 +450,27 @@ void updateUserState(User& user, bool isEntry, long cost) {
         deductCredit(user, cost);
     }
     
-    // Save changes locally
+    // Save changes locally FIRST (offline-first approach)
     if (user.type == USER_STATIC) {
         saveStaticUsersToNVS();
     } else {
         saveDynamicUsersToNVS();
     }
+    Serial.println("✓ User state saved locally to NVS");
     
-    // Sync changes to server
-    Serial.println("Syncing user changes to server...");
-    RPCResponse syncResponse = updateUserOnServer(user.uid, user.name, user.credit, user.in);
-    if (syncResponse.success) {
-        Serial.println("User data successfully synced to server");
+    // Try to sync changes to server (non-blocking)
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("Syncing user changes to server...");
+        RPCResponse syncResponse = updateUserOnServer(user.uid, user.name, user.credit, user.in);
+        if (syncResponse.success) {
+            Serial.println("✓ User data successfully synced to server");
+        } else {
+            Serial.println("⚠ Failed to sync user data to server: " + syncResponse.error);
+            Serial.println("  Device will continue working offline. Data saved locally.");
+        }
     } else {
-        Serial.println("Failed to sync user data to server: " + syncResponse.error);
-        Serial.println("Will retry on next periodic sync");
+        Serial.println("⚠ WiFi offline - User data saved locally only");
+        Serial.println("  Will sync automatically when connection restored");
     }
 }
 

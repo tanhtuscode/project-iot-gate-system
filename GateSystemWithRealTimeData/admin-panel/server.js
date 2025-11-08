@@ -13,6 +13,7 @@ const DB_DIR = path.join(__dirname, 'database');
 const USERS_DB_FILE = path.join(DB_DIR, 'users.json');
 const SETTINGS_DB_FILE = path.join(DB_DIR, 'settings.json');
 const DEVICES_DB_FILE = path.join(DB_DIR, 'devices.json');
+const HISTORY_DB_FILE = path.join(DB_DIR, 'history.json');
 
 // Ensure database directory exists
 if (!fs.existsSync(DB_DIR)) {
@@ -32,6 +33,9 @@ if (!fs.existsSync(SETTINGS_DB_FILE)) {
 }
 if (!fs.existsSync(DEVICES_DB_FILE)) {
   fs.writeFileSync(DEVICES_DB_FILE, JSON.stringify({ devices: [], activeDeviceId: null }, null, 2));
+}
+if (!fs.existsSync(HISTORY_DB_FILE)) {
+  fs.writeFileSync(HISTORY_DB_FILE, JSON.stringify({ entries: [] }, null, 2));
 }
 
 // Load database
@@ -807,7 +811,7 @@ app.post('/api/database/users/add', (req, res) => {
 
 // Update user in central database
 app.post('/api/database/users/update', (req, res) => {
-  const { uid, name, credit, in: userIn } = req.body;
+  const { uid, name, credit, in: userIn, timestamp } = req.body;
   
   if (!uid) {
     return res.status(400).json({ error: 'UID is required' });
@@ -820,20 +824,72 @@ app.post('/api/database/users/update', (req, res) => {
     return res.status(404).json({ error: 'User not found' });
   }
   
-  if (name !== undefined) data.users[userIndex].name = name;
-  if (credit !== undefined) data.users[userIndex].credit = credit;
-  if (userIn !== undefined) data.users[userIndex].in = userIn;
-  data.users[userIndex].updatedAt = new Date().toISOString();
+  const user = data.users[userIndex];
+  const wasInside = user.in;
+  
+  if (name !== undefined) user.name = name;
+  if (credit !== undefined) user.credit = credit;
+  if (userIn !== undefined) {
+    user.in = userIn;
+    
+    // Track in/out timestamps - use ESP32's RTC time if provided, otherwise use server time
+    const now = timestamp || new Date().toISOString();
+    if (userIn === true && wasInside === false) {
+      // User just entered
+      user.lastInTime = now;
+      
+      // Log to history database - use user.credit (current credit after any changes)
+      logHistory(uid, user.name, 'IN', now, user.credit);
+    } else if (userIn === false && wasInside === true) {
+      // User just exited
+      user.lastOutTime = now;
+      
+      // Log to history database - use user.credit (current credit after any changes)
+      logHistory(uid, user.name, 'OUT', now, user.credit);
+    }
+  }
+  user.updatedAt = timestamp || new Date().toISOString();
   
   if (saveDatabase(USERS_DB_FILE, data)) {
     // Auto-sync to all connected devices
-    autoSyncToAllDevices('USER_UPDATED', `User "${data.users[userIndex].name}" updated`);
+    autoSyncToAllDevices('USER_UPDATED', `User "${user.name}" updated`);
     
-    res.json({ success: true, user: data.users[userIndex] });
+    res.json({ success: true, user: user });
   } else {
     res.status(500).json({ error: 'Failed to save database' });
   }
 });
+
+// Function to log history
+function logHistory(uid, name, action, timestamp, credit) {
+  try {
+    const historyData = loadDatabase(HISTORY_DB_FILE);
+    if (!historyData.entries) {
+      historyData.entries = [];
+    }
+    
+    const historyEntry = {
+      id: Date.now() + Math.random().toString(36).substr(2, 9),
+      uid: uid,
+      name: name,
+      action: action, // 'IN' or 'OUT'
+      timestamp: timestamp,
+      credit: credit
+    };
+    
+    historyData.entries.push(historyEntry);
+    
+    // Keep only last 1000 entries to prevent file from growing too large
+    if (historyData.entries.length > 1000) {
+      historyData.entries = historyData.entries.slice(-1000);
+    }
+    
+    saveDatabase(HISTORY_DB_FILE, historyData);
+    console.log(`✓ History logged: ${name} - ${action} at ${timestamp}`);
+  } catch (error) {
+    console.error('Error logging history:', error);
+  }
+}
 
 // Delete user from central database
 app.delete('/api/database/users/:uid', (req, res) => {
@@ -974,6 +1030,25 @@ app.post('/api/database/sync-all', async (req, res) => {
     message: `Synced to ${successCount} out of ${results.length} devices`,
     results 
   });
+});
+
+// ==================== History API ====================
+
+// Get history entries
+app.get('/api/history', (req, res) => {
+  const data = loadDatabase(HISTORY_DB_FILE);
+  res.json(data || { entries: [] });
+});
+
+// Clear history
+app.delete('/api/history', (req, res) => {
+  const data = { entries: [] };
+  
+  if (saveDatabase(HISTORY_DB_FILE, data)) {
+    res.json({ success: true, message: 'History cleared' });
+  } else {
+    res.status(500).json({ error: 'Failed to clear history' });
+  }
 });
 
 // Serve main dashboard

@@ -157,6 +157,16 @@ RPCResponse updateUserOnServer(const String& uid, const String& name, long credi
     payload["credit"] = credit;
     payload["in"] = in;
     
+    // Add RTC timestamp for accurate time tracking
+    DateTime now = rtc.now();
+    if (now.year() >= 2023) { // Valid RTC time
+        char timestamp[25];
+        sprintf(timestamp, "%04d-%02d-%02dT%02d:%02d:%02d.000Z",
+                now.year(), now.month(), now.day(),
+                now.hour(), now.minute(), now.second());
+        payload["timestamp"] = timestamp;
+    }
+    
     String payloadStr;
     serializeJson(payload, payloadStr);
     
@@ -250,15 +260,28 @@ void handleLED() {
 }
 
 void handleInputMode() {
+    String mode = "";
+    
+    // Check if mode is in URL parameters or JSON body
     if (server.hasArg("mode")) {
-        String mode = server.arg("mode");
-        mode.toLowerCase();
+        mode = server.arg("mode");
+    } else if (server.hasArg("plain")) {
+        // Parse JSON body
+        String payload = server.arg("plain");
+        DynamicJsonDocument reqDoc(256);
+        DeserializationError error = deserializeJson(reqDoc, payload);
         
-        if (mode == "on") {
-            setInputModeActive(true);
-        } else if (mode == "off") {
-            setInputModeActive(false);
+        if (!error && reqDoc.containsKey("mode")) {
+            mode = reqDoc["mode"].as<String>();
         }
+    }
+    
+    mode.toLowerCase();
+    
+    if (mode == "on") {
+        setInputModeActive(true);
+    } else if (mode == "off") {
+        setInputModeActive(false);
     }
     
     DynamicJsonDocument doc(256);

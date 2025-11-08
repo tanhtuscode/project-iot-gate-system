@@ -1,31 +1,31 @@
 {
   "devices": [
     {
-      "id": "device_1760318560893_5mmtfhgov",
-      "name": "192.168.137.2",
-      "ip": "http://192.168.137.2",
-      "location": "192.168.137.2",
-      "description": "192.168.137.2",
-      "addedAt": "2025-10-13T01:22:40.893Z",
-      "lastConnected": "2025-10-13T01:52:03.968Z",
-      "connected": false,
-      "status": "error",
+      "id": "device_1762589079404_efhq9b07y",
+      "name": "Main Gate",
+      "ip": "http://192.168.137.236",
+      "location": "A",
+      "description": "A",
+      "addedAt": "2025-11-08T08:04:39.404Z",
+      "lastConnected": "2025-11-08T08:04:39.624Z",
+      "connected": true,
+      "status": "connected",
       "info": {
         "fwVersion": "2.1",
         "version": "2.1",
-        "ip": "192.168.137.2",
+        "ip": "192.168.137.236",
         "ssid": "Hanu",
-        "rssi": -37,
-        "uptime": 42,
-        "uptime_s": 42,
-        "freeHeap": 232276,
-        "heap": 232276,
-        "users": 1,
+        "rssi": -30,
+        "uptime": 228,
+        "uptime_s": 228,
+        "freeHeap": 236240,
+        "heap": 236204,
+        "users": 2,
         "static": 0,
-        "dynamic": 1
+        "dynamic": 2
       },
-      "error": "timeout of 3000ms exceeded"
+      "error": null
     }
   ],
-  "activeDeviceId": "device_1760318560893_5mmtfhgov"
+  "activeDeviceId": "device_1762589079404_efhq9b07y"
 }

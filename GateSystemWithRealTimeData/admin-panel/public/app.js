@@ -462,25 +462,50 @@ async function loadState() {
     if (!activeDeviceId) return;
     
     try {
+        // Get user count from database instead of ESP32
+        const dbResponse = await fetch('/api/database/users');
+        const dbData = await dbResponse.json();
+        const totalUsers = dbData.users?.length || 0;
+        
+        // Update total users in both locations
+        document.getElementById('totalUsers').textContent = totalUsers;
+        const totalUsersCard = document.getElementById('totalUsersCard');
+        if (totalUsersCard) {
+            totalUsersCard.textContent = totalUsers;
+        }
+        
+        // Get ESP32 state for other data
         const response = await fetch('/api/esp32/state');
         const data = await response.json();
         
-        // Update stats
-        document.getElementById('totalUsers').textContent = data.users?.length || 0;
+        // Update users inside count
         document.getElementById('usersInside').textContent = data.users?.filter(u => u.in).length || 0;
         
-        // Update header card stats
-        const totalUsersCard = document.getElementById('totalUsersCard');
-        if (totalUsersCard) {
-            totalUsersCard.textContent = data.users?.length || 0;
-        }
-        
-        // Update input mode status based on ESP32 admin mode
+        // Update input mode status from ESP32 state
         const inputModeEl = document.getElementById('inputMode');
         if (inputModeEl) {
-            inputModeEl.innerHTML = data.adminOn ? 
-                '<span class="text-green-600"><i class="fas fa-check mr-1"></i>Ready</span>' : 
-                '<span class="text-gray-600"><i class="fas fa-times mr-1"></i>Off</span>';
+            const isInputActive = data.inputMode === true || data.inputMode === 'true';
+            inputModeEl.innerHTML = isInputActive ? 
+                '<span class="text-green-600"><i class="fas fa-keyboard mr-1"></i>Active</span>' : 
+                '<span class="text-gray-600"><i class="fas fa-times mr-1"></i>Inactive</span>';
+        }
+        
+        // Update card stats input mode status
+        const inputModeStatusEl = document.getElementById('inputModeStatus');
+        if (inputModeStatusEl) {
+            const isInputActive = data.inputMode === true || data.inputMode === 'true';
+            inputModeStatusEl.textContent = isInputActive ? 'ON' : 'OFF';
+            inputModeStatusEl.className = isInputActive ? 
+                'text-3xl font-bold text-green-600' : 
+                'text-3xl font-bold text-gray-800';
+        }
+        
+        // Auto-detect if input mode was disabled (by ESP32 after scan)
+        if (inputModeActive && !(data.inputMode === true || data.inputMode === 'true')) {
+            console.log('Input mode was auto-disabled by ESP32');
+            inputModeActive = false;
+            inputModeDeviceId = null;
+            stopInputModePolling();
         }
         
         // Update status
@@ -498,47 +523,211 @@ async function loadState() {
 // Load users
 async function loadUsers() {
     if (!activeDeviceId) {
-        document.getElementById('usersTable').innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">Please select a device first</td></tr>';
+        document.getElementById('usersTable').innerHTML = '<tr><td colspan="10" class="px-6 py-4 text-center text-gray-500">Please select a device first</td></tr>';
         return;
     }
     
     try {
-        const response = await fetch('/api/esp32/state');
-        const data = await response.json();
+        // Load both ESP32 state (for current status) and database (for timestamps)
+        const [esp32Response, dbResponse] = await Promise.all([
+            fetch('/api/esp32/state'),
+            fetch('/api/database/users')
+        ]);
+        
+        const esp32Data = await esp32Response.json();
+        const dbData = await dbResponse.json();
         
         const tbody = document.getElementById('usersTable');
-        if (!data.users || data.users.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No users found</td></tr>';
+        if (!esp32Data.users || esp32Data.users.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="10" class="px-6 py-4 text-center text-gray-500">No users found</td></tr>';
             return;
         }
         
-        tbody.innerHTML = data.users.map(user => `
+        // Create a map of database users for quick lookup
+        const dbUsersMap = new Map();
+        if (dbData.users) {
+            dbData.users.forEach(u => dbUsersMap.set(u.uid, u));
+        }
+        
+        tbody.innerHTML = esp32Data.users.map(user => {
+            // Merge with database data to get accurate timestamps
+            const dbUser = dbUsersMap.get(user.uid) || {};
+            const mergedUser = { ...user, ...dbUser };
+            
+            return `
             <tr class="hover:bg-gray-50">
-                <td class="px-6 py-4 whitespace-nowrap text-sm font-mono">${user.uid}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${user.name}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-mono">${mergedUser.uid}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${mergedUser.name}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm">
-                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.type === 'STA' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}">
-                        ${user.type === 'STA' ? 'Static' : 'Dynamic'}
+                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${mergedUser.type === 'STA' || mergedUser.type === 'static' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}">
+                        ${mergedUser.type === 'STA' || mergedUser.type === 'static' ? 'Static' : 'Dynamic'}
                     </span>
                 </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatCurrency(user.credit)}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatCurrency(mergedUser.credit)}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm">
-                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.in ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}">
-                        ${user.in ? 'Inside' : 'Outside'}
+                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${mergedUser.in ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}">
+                        ${mergedUser.in ? 'Inside' : 'Outside'}
                     </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    ${mergedUser.lastInTime ? new Date(mergedUser.lastInTime).toLocaleString('en-US', { 
+                        month: 'short', 
+                        day: 'numeric', 
+                        hour: '2-digit', 
+                        minute: '2-digit' 
+                    }) : '-'}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    ${mergedUser.lastOutTime ? new Date(mergedUser.lastOutTime).toLocaleString('en-US', { 
+                        month: 'short', 
+                        day: 'numeric', 
+                        hour: '2-digit', 
+                        minute: '2-digit' 
+                    }) : '-'}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    ${mergedUser.createdAt ? new Date(mergedUser.createdAt).toLocaleString('en-US', { 
+                        year: 'numeric', 
+                        month: 'short', 
+                        day: 'numeric', 
+                        hour: '2-digit', 
+                        minute: '2-digit' 
+                    }) : '-'}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    ${mergedUser.updatedAt ? new Date(mergedUser.updatedAt).toLocaleString('en-US', { 
+                        year: 'numeric', 
+                        month: 'short', 
+                        day: 'numeric', 
+                        hour: '2-digit', 
+                        minute: '2-digit' 
+                    }) : '-'}
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                    <button onclick="addCredit('${user.uid}')" class="text-blue-600 hover:text-blue-900" title="Add Credit">
+                    <button onclick="addCredit('${mergedUser.uid}')" class="text-blue-600 hover:text-blue-900" title="Add Credit">
                         <i class="fas fa-plus-circle"></i>
                     </button>
-                    <button onclick="deleteUser('${user.uid}')" class="text-red-600 hover:text-red-900" title="Delete">
+                    <button onclick="deleteUser('${mergedUser.uid}')" class="text-red-600 hover:text-red-900" title="Delete">
                         <i class="fas fa-trash"></i>
                     </button>
                 </td>
             </tr>
-        `).join('');
+            `;
+        }).join('');
     } catch (error) {
         console.error('Failed to load users:', error);
+    }
+}
+
+// Load history
+async function loadHistory() {
+    try {
+        const response = await fetch('/api/history');
+        const data = await response.json();
+        
+        const tbody = document.getElementById('historyTable');
+        if (!data.entries || data.entries.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">No history entries found</td></tr>';
+            return;
+        }
+        
+        // Sort by timestamp descending (most recent first)
+        const sortedEntries = data.entries.sort((a, b) => 
+            new Date(b.timestamp) - new Date(a.timestamp)
+        );
+        
+        tbody.innerHTML = sortedEntries.map(entry => `
+            <tr class="hover:bg-gray-50">
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    ${new Date(entry.timestamp).toLocaleString('en-US', { 
+                        year: 'numeric',
+                        month: 'short', 
+                        day: 'numeric', 
+                        hour: '2-digit', 
+                        minute: '2-digit',
+                        second: '2-digit'
+                    })}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-mono">${entry.uid}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${entry.name}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm">
+                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${entry.action === 'IN' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                        <i class="fas fa-${entry.action === 'IN' ? 'sign-in-alt' : 'sign-out-alt'} mr-1"></i>
+                        ${entry.action}
+                    </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatCurrency(entry.credit)}</td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Failed to load history:', error);
+        document.getElementById('historyTable').innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-red-500">Failed to load history</td></tr>';
+    }
+}
+
+async function exportHistory() {
+    try {
+        const response = await fetch('/api/history');
+        const data = await response.json();
+        
+        if (!data.entries || data.entries.length === 0) {
+            showAlert('No history to export', 'warning');
+            return;
+        }
+        
+        // Create CSV content
+        const headers = ['Timestamp', 'UID', 'Name', 'Action', 'Credit After'];
+        const csvRows = [headers.join(',')];
+        
+        data.entries.forEach(entry => {
+            const row = [
+                new Date(entry.timestamp).toISOString(),
+                entry.uid,
+                `"${entry.name}"`, // Quote name in case it contains commas
+                entry.action,
+                entry.credit
+            ];
+            csvRows.push(row.join(','));
+        });
+        
+        // Create download link
+        const csvContent = csvRows.join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `history_${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        
+        showAlert('History exported successfully', 'success');
+    } catch (error) {
+        console.error('Failed to export history:', error);
+        showAlert('Failed to export history', 'error');
+    }
+}
+
+async function clearHistory() {
+    if (!confirm('Are you sure you want to clear all history? This action cannot be undone.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/history', {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            showAlert('History cleared successfully', 'success');
+            loadHistory();
+        } else {
+            showAlert('Failed to clear history', 'error');
+        }
+    } catch (error) {
+        console.error('Failed to clear history:', error);
+        showAlert('Failed to clear history', 'error');
     }
 }
 
@@ -718,22 +907,27 @@ async function toggleInputMode(deviceId = null) {
         return;
     }
     
-    inputModeActive = !inputModeActive;
-    inputModeDeviceId = inputModeActive ? targetId : null;
+    // Toggle the local state
+    const newState = !inputModeActive;
+    inputModeActive = newState;
+    inputModeDeviceId = newState ? targetId : null;
     
     try {
         // Toggle input mode on ESP32
         const response = await fetch('/api/esp32/input/mode', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mode: inputModeActive ? 'on' : 'off' })
+            body: JSON.stringify({ mode: newState ? 'on' : 'off' })
         });
         
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         
-        if (inputModeActive) {
+        const result = await response.json();
+        console.log('Input mode toggle result:', result);
+        
+        if (newState) {
             showNotification('Input mode enabled - scan a card to add new user', 'success');
             startInputModePolling();
         } else {
@@ -741,14 +935,15 @@ async function toggleInputMode(deviceId = null) {
             stopInputModePolling();
         }
         
-        updateInputModeUI();
-        setTimeout(() => loadState(), 1000);
+        // Immediately refresh state to show updated input mode status
+        setTimeout(() => loadState(), 500);
     } catch (error) {
         console.error('Toggle input mode error:', error);
         showNotification('Failed to toggle input mode: ' + error.message, 'error');
-        inputModeActive = false;
+        // Revert state on error
+        inputModeActive = !newState;
         inputModeDeviceId = null;
-        updateInputModeUI();
+        stopInputModePolling();
     }
 }
 
@@ -764,6 +959,24 @@ function startInputModePolling() {
         }
         
         try {
+            // Check ESP32 state to see if input mode is still active
+            const stateResponse = await fetch('/api/esp32/state');
+            if (stateResponse.ok) {
+                const stateData = await stateResponse.json();
+                const isInputActive = stateData.inputMode === true || stateData.inputMode === 'true';
+                
+                // If ESP32 disabled input mode (e.g., after card scan), stop polling
+                if (!isInputActive && inputModeActive) {
+                    console.log('Input mode auto-disabled by ESP32');
+                    inputModeActive = false;
+                    inputModeDeviceId = null;
+                    stopInputModePolling();
+                    showNotification('Input mode disabled - card scanned', 'info');
+                    loadState(); // Refresh UI
+                    return;
+                }
+            }
+            
             // Check for pending new UIDs
             const response = await fetch('/api/input/pending-uids');
             if (!response.ok) {
@@ -787,12 +1000,12 @@ function startInputModePolling() {
             if (error.message.includes('503') || error.message.includes('not connected')) {
                 inputModeActive = false;
                 inputModeDeviceId = null;
-                updateInputModeUI();
                 stopInputModePolling();
                 showNotification('Device disconnected - input mode disabled', 'warning');
+                loadState(); // Refresh UI
             }
         }
-    }, 2000); // Poll every 2 seconds
+    }, 1500); // Poll every 1.5 seconds for faster response
 }
 
 function stopInputModePolling() {
@@ -829,23 +1042,8 @@ function handleNewCardScanned(uid, uidId = null) {
     showNotification(`Card scanned! UID: ${uid}`, 'success');
 }
 
-function updateInputModeUI() {
-    const statusEl = document.getElementById('inputModeStatus');
-    const deviceInputEl = document.getElementById('inputMode');
-    
-    if (statusEl) {
-        statusEl.textContent = inputModeActive ? 'ON' : 'OFF';
-        statusEl.className = inputModeActive ? 
-            'text-3xl font-bold text-green-600' : 
-            'text-3xl font-bold text-gray-800';
-    }
-    
-    if (deviceInputEl) {
-        deviceInputEl.innerHTML = inputModeActive ? 
-            '<span class="text-green-600"><i class="fas fa-check mr-1"></i>Scanning</span>' : 
-            '<span class="text-gray-600"><i class="fas fa-times mr-1"></i>Off</span>';
-    }
-}
+// Note: updateInputModeUI is now handled dynamically in loadState()
+// Input mode status is read from ESP32 state and updated automatically
 
 async function runSelfTest(deviceId = null) {
     const targetId = deviceId || activeDeviceId;
@@ -995,6 +1193,7 @@ function switchTab(tabName) {
     if (tabName === 'devices') loadDevices();
     if (tabName === 'users') loadUsers();
     if (tabName === 'database') loadDatabaseUsers();
+    if (tabName === 'history') loadHistory();
     if (tabName === 'events') loadEvents();
     if (tabName === 'alerts') loadAlerts();
     if (tabName === 'logs') loadConnectionLogs();

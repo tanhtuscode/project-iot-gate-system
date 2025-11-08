@@ -1,0 +1,36 @@
+{
+  "entries": [
+    {
+      "id": "1762587752631k0u32tc1l",
+      "uid": "1E:FC:DA:1A",
+      "name": "Tus Anh",
+      "action": "IN",
+      "timestamp": "2025-11-08T15:36:56.000Z",
+      "credit": 70000
+    },
+    {
+      "id": "1762588003914pj0ce21jl",
+      "uid": "1E:FC:DA:1A",
+      "name": "Tus Anh",
+      "action": "OUT",
+      "timestamp": "2025-11-08T15:41:07.000Z",
+      "credit": 67000
+    },
+    {
+      "id": "1762588216029hggdild2v",
+      "uid": "1E:FC:DA:1A",
+      "name": "Tus Anh",
+      "action": "IN",
+      "timestamp": "2025-11-08T15:44:39.000Z",
+      "credit": 67000
+    },
+    {
+      "id": "1762589106583gj0bflxaq",
+      "uid": "1E:FC:DA:1A",
+      "name": "Tus Anh",
+      "action": "OUT",
+      "timestamp": "2025-11-08T15:59:30.000Z",
+      "credit": 64000
+    }
+  ]
+}

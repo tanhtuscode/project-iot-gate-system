@@ -210,6 +210,14 @@ void gateMaybeClose() {
     }
 }
 
+void openGate() {
+    gateOpen();  // Alias for gateOpen
+}
+
+void handleGateControl() {
+    gateMaybeClose();  // Alias for gateMaybeClose
+}
+
 // ================== Hardware Test Functions ==================
 bool testRFID() {
     return rfid.PCD_PerformSelfTest();
